@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Firestore Multiplayer Test</title>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        button { padding: 10px; margin: 5px; }
+        #status { margin-top: 20px; font-weight: bold; }
+        #log { margin-top: 20px; white-space: pre-wrap; background: #f0f0f0; padding: 10px; }
+    </style>
+</head>
+<body>
+    <h1>🔥 Тест мультиплеера через Firestore</h1>
+    
+    <button id="hostBtn">Создать комнату (хост)</button>
+    <button id="clientBtn">Подключиться к комнате (клиент)</button>
+    
+    <div>
+        <label>Код комнаты:</label>
+        <input type="text" id="roomCodeInput" placeholder="Введите код">
+        <button id="joinBtn">Войти</button>
+    </div>
+    
+    <div id="status"></div>
+    <div id="log"></div>
+
+    <script>
+        // ⚠️ ЗАМЕНИТЕ ЭТОТ КОНФИГ НА СВОЙ ИЗ FIREBASE
+        const firebaseConfig = {
+            apiKey: "AIzaSyC-iLxizH1umfeHSUZHLvpAt6XNm21p90Y",
+  authDomain: "tanksduel-b90c7.firebaseapp.com",
+  projectId: "tanksduel-b90c7",
+  storageBucket: "tanksduel-b90c7.firebasestorage.app",
+  messagingSenderId: "952596856224",
+  appId: "1:952596856224:web:5398cc1e5ffe657c69f8c5",
+  measurementId: "G-L87850TRQH"
+        };
+
+        // Инициализация Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        let currentRoomId = null;
+        let roomListener = null;
+        let playerId = 'player_' + Math.random().toString(36).substr(2, 9);
+
+        function log(message) {
+            console.log(message);
+            document.getElementById('log').innerText += message + '\n';
+        }
+
+        document.getElementById('hostBtn').onclick = async () => {
+            // Генерируем случайный код комнаты
+            const roomId = Math.floor(1000 + Math.random() * 9000).toString();
+            try {
+                await db.collection('test_rooms').doc(roomId).set({
+                    hostId: playerId,
+                    status: 'waiting',
+                    messages: {}
+                });
+                currentRoomId = roomId;
+                document.getElementById('status').innerText = '✅ Комната создана! Код: ' + roomId;
+                log('Хост: комната создана, код = ' + roomId);
+                
+                // Слушаем сообщения
+                if (roomListener) roomListener();
+                roomListener = db.collection('test_rooms').doc(roomId).onSnapshot((doc) => {
+                    const data = doc.data();
+                    if (data && data.messages) {
+                        log('📥 Хост получил сообщения: ' + JSON.stringify(data.messages));
+                    }
+                });
+            } catch (e) {
+                log('❌ Ошибка создания комнаты: ' + e.message);
+            }
+        };
+
+        document.getElementById('joinBtn').onclick = async () => {
+            const roomId = document.getElementById('roomCodeInput').value.trim();
+            if (!roomId) return alert('Введите код комнаты');
+            
+            try {
+                const roomRef = db.collection('test_rooms').doc(roomId);
+                const room = await roomRef.get();
+                if (!room.exists) {
+                    alert('Комната не найдена');
+                    return;
+                }
+                currentRoomId = roomId;
+                document.getElementById('status').innerText = '✅ Подключено к комнате ' + roomId;
+                log('Клиент: подключился к комнате ' + roomId);
+                
+                // Отправляем сообщение каждые 3 секунды (для теста)
+                setInterval(() => {
+                    if (currentRoomId) {
+                        const message = 'Привет от ' + playerId + ' в ' + new Date().toLocaleTimeString();
+                        roomRef.update({
+                            [`messages.${playerId}`]: message
+                        }).then(() => {
+                            log('📤 Клиент отправил сообщение: ' + message);
+                        }).catch(e => {
+                            log('❌ Ошибка отправки: ' + e.message);
+                        });
+                    }
+                }, 3000);
+                
+                // Слушаем сообщения (на всякий случай)
+                roomRef.onSnapshot((doc) => {
+                    const data = doc.data();
+                    if (data && data.messages) {
+                        log('📥 Клиент получил сообщения: ' + JSON.stringify(data.messages));
+                    }
+                });
+            } catch (e) {
+                log('❌ Ошибка подключения: ' + e.message);
+            }
+        };
+
+        document.getElementById('clientBtn').onclick = () => {
+            document.getElementById('roomCodeInput').value = '';
+            document.getElementById('status').innerText = 'Введите код комнаты и нажмите "Войти"';
+        };
+    </script>
+</body>
+</html>
